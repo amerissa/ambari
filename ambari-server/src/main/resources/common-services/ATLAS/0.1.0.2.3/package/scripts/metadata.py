@@ -36,7 +36,8 @@ from resource_management.libraries.resources.template_config import TemplateConf
 from resource_management.libraries.resources.xml_config import XmlConfig
 from resource_management.libraries.functions.is_empty import is_empty
 from resource_management.libraries.resources.modify_properties_file import ModifyPropertiesFile
-
+from ambari_commons.credential_store_helper import create_password_in_credential_store
+from resource_management.core.logger import Logger
 
 def metadata(type='server'):
     import params
@@ -113,10 +114,10 @@ def metadata(type='server'):
       files_to_chown = [format("{conf_dir}/policy-store.txt"), format("{conf_dir}/users-credentials.properties")]
       for file in files_to_chown:
         if os.path.exists(file):
-          Execute(('chown', format('{metadata_user}:{user_group}'), file),
+              Execute(('chown', format('{metadata_user}:{user_group}'), file),
                   sudo=True
                   )
-          Execute(('chmod', '644', file),
+              Execute(('chmod', '644', file),
                   sudo=True
                   )
 
@@ -140,6 +141,19 @@ def metadata(type='server'):
       TemplateConfig(format(params.atlas_jaas_file),
                      owner=params.metadata_user)
 
+    if type == 'server':
+      if not os.path.exists(params.expanded_war_dir + '/atlas'):
+          expandwar()
+      if params.truststore_enabled:
+          create_password_in_credential_store('truststore.password', params.credential_provider, params.credential_shell_lib_path,
+              params.java64_home, params.jdk_location, params.truststore_password)
+
+      if params.keystore_enabled:
+          create_password_in_credential_store('keystore.password', params.credential_provider, params.credential_shell_lib_path,
+              params.java64_home, params.jdk_location, params.keystore_password)
+          create_password_in_credential_store('password', params.credential_provider, params.credential_shell_lib_path,
+              params.java64_home, params.jdk_location, params.key_password)
+    Logger.info("Creating Solr")
     if type == 'server' and params.search_backend_solr and params.has_infra_solr:
       solr_cloud_util.setup_solr_client(params.config)
       check_znode()
@@ -150,7 +164,7 @@ def metadata(type='server'):
         solr_cloud_util.add_solr_roles(params.config,
                                        roles = [params.infra_solr_role_atlas, params.infra_solr_role_ranger_audit, params.infra_solr_role_dev],
                                        new_service_principals = [params.atlas_jaas_principal])
-
+      Logger.info("Creating Solr")
       create_collection('vertex_index', 'atlas_configs', jaasFile)
       create_collection('edge_index', 'atlas_configs', jaasFile)
       create_collection('fulltext_index', 'atlas_configs', jaasFile)
@@ -248,9 +262,9 @@ def create_collection(collection, config_set, jaasFile):
       jaas_file=jaasFile,
       shards=params.atlas_solr_shards,
       replication_factor = params.infra_solr_replication_factor,
-      trust_store_password =  params.truststore_password if params.credential_provider else None,
-      trust_store_type = "JKS" if params.credential_provider else None,
-      trust_store_location = params.truststore_location if params.credential_provider else None)
+      trust_store_password =  params.truststore_password,
+      trust_store_type = "JKS" if params.truststore_enabled else None,
+      trust_store_location = params.truststore_location)
 
 def secure_znode(znode, jaasFile):
   import params
@@ -259,6 +273,15 @@ def secure_znode(znode, jaasFile):
                                jaas_file=jaasFile,
                                java64_home=params.ambari_java_home, sasl_users=[params.atlas_jaas_principal])
 
+
+def expandwar():
+  import sys
+  import params
+  sys.path.append(format("{stack_root}/current/atlas-server/bin"))
+  os.environ['JAVA_HOME'] = params.java64_home
+  import atlas_config as mc
+  web_app_dir = mc.webAppDir(format("{stack_root}/current/atlas-server/"))
+  mc.expandWebApp(format("{stack_root}/current/atlas-server/"))
 
 
 @retry(times=10, sleep_time=5, err_class=Fail)

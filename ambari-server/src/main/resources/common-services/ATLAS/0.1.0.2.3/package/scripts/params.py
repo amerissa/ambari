@@ -27,7 +27,6 @@ from resource_management.libraries.script.script import Script
 from resource_management.libraries.functions.format import format
 from resource_management.libraries.functions.default import default
 from resource_management.core.utils import PasswordString
-from ambari_commons.credential_store_helper import get_password_from_credential_store
 
 
 # Local Imports
@@ -138,7 +137,7 @@ jdk_location = config['ambariLevelParams']['jdk_location']
 
 
 # credential provider
-credential_provider = default("/configurations/application-properties/cert.stores.credential.provider.path", None)
+credential_provider = default("/configurations/application-properties/cert.stores.credential.provider.path", None).replace("jceks://file/", "")
 
 # command line args
 ssl_enabled = default("/configurations/application-properties/atlas.enableTLS", False)
@@ -146,6 +145,11 @@ http_port = default("/configurations/application-properties/atlas.server.http.po
 https_port = default("/configurations/application-properties/atlas.server.https.port", "21443")
 truststore_location = default("/configurations/application-properties/truststore.file", None)
 keystore_location = default("/configurations/application-properties/keystore.file", None)
+truststore_password = default("/configurations/atlas-env/truststore.password", None)
+keystore_password = default("/configurations/atlas-env/keystore.password", None)
+key_password = default("/configurations/atlas-env/key.password", None)
+truststore_enabled = True if truststore_location and truststore_password else False
+keystore_enabled = True if keystore_password and keystore_location else False
 
 if ssl_enabled:
   metadata_port = https_port
@@ -193,6 +197,8 @@ metadata_opts = config['configurations']['atlas-env']['metadata_opts']
 metadata_classpath = config['configurations']['atlas-env']['metadata_classpath']
 data_dir = format("{stack_root}/current/atlas-server/data")
 expanded_war_dir = os.environ['METADATA_EXPANDED_WEBAPP_DIR'] if 'METADATA_EXPANDED_WEBAPP_DIR' in os.environ else format("{stack_root}/current/atlas-server/server/webapp")
+
+credential_shell_lib_path = format("{stack_root}/current/atlas-server/conf/") + ":" + expanded_war_dir + '/atlas/WEB-INF/lib/*'
 
 metadata_log4j_content = config['configurations']['atlas-log4j']['content']
 
@@ -429,10 +435,3 @@ if stack_supports_atlas_ranger_plugin and enable_ranger_atlas:
 # atlas admin login username password
 atlas_admin_username = config['configurations']['atlas-env']['atlas.admin.username']
 atlas_admin_password = config['configurations']['atlas-env']['atlas.admin.password']
-
-# Atlas Passwords Extracted From Credential Store
-if credential_provider:
-    default_credential_shell_lib_path = jdk_location
-    truststore_password = PasswordString(get_password_from_credential_store('truststore.password', credential_provider, os.path.join(default_credential_shell_lib_path, '*'), java64_home, jdk_location))
-    keystore_password = PasswordString(get_password_from_credential_store('keystore.password', credential_provider, os.path.join(default_credential_shell_lib_path, '*'), java64_home, jdk_location))
-    key_password = PasswordString(get_password_from_credential_store('password', credential_provider, os.path.join(default_credential_shell_lib_path, '*'), java64_home, jdk_location))

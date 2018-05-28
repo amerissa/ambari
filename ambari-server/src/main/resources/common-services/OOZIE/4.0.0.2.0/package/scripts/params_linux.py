@@ -237,27 +237,25 @@ oozie_log_dir = config['configurations']['oozie-env']['oozie_log_dir']
 oozie_data_dir = config['configurations']['oozie-env']['oozie_data_dir']
 oozie_server_port = get_port_from_url(config['configurations']['oozie-site']['oozie.base.url'])
 oozie_server_admin_port = config['configurations']['oozie-env']['oozie_admin_port']
-if 'export OOZIE_HTTPS_PORT' in oozie_env_sh_template or 'oozie.https.port' in config['configurations']['oozie-site'] or 'oozie.https.keystore.file' in config['configurations']['oozie-site'] or 'oozie.https.keystore.pass' in config['configurations']['oozie-site']:
+oozie_https_enabled = config['configurations']['oozie-env']['https_enabled']
+oozie_keystore_file = config['configurations']['oozie-env']['keystore_file']
+oozie_keystore_password = PasswordString(config['configurations']['oozie-env']['keystore_password'])
+
+
+if oozie_https_enabled:
   oozie_secure = '-secure'
 else:
   oozie_secure = ''
 
-https_port = None
-# try to get https port form oozie-env content
-for line in oozie_env_sh_template.splitlines():
-  result = re.match(r"export\s+OOZIE_HTTPS_PORT=(\d+)", line)
-  if result is not None:
-    https_port = result.group(1)
-# or from oozie-site.xml
-if https_port is None and 'oozie.https.port' in config['configurations']['oozie-site']:
-  https_port = config['configurations']['oozie-site']['oozie.https.port']
+https_port = config['configurations']['oozie-env']['https_port']
 
 oozie_base_url = config['configurations']['oozie-site']['oozie.base.url']
 
 service_check_job_name = default("/configurations/oozie-env/service_check_job_name", "no-op")
 
 # construct proper url for https
-if https_port is not None:
+if oozie_https_enabled:
+
   parsed_url = urlparse(oozie_base_url)
   oozie_base_url = oozie_base_url.replace(parsed_url.scheme, "https")
   if parsed_url.port is None:
@@ -272,8 +270,8 @@ fs_root = config['configurations']['core-site']['fs.defaultFS']
 
 if stack_version_formatted and check_stack_feature(StackFeature.OOZIE_SETUP_SHARED_LIB, stack_version_formatted):
   put_shared_lib_to_hdfs_cmd = format("{oozie_setup_sh} sharelib create -fs {fs_root} -locallib {oozie_shared_lib}")
-  # for older  
-else: 
+  # for older
+else:
   put_shared_lib_to_hdfs_cmd = format("hadoop --config {hadoop_conf_dir} dfs -put {oozie_shared_lib} {oozie_hdfs_user_dir}")
 
 default_connectors_map = { "com.microsoft.sqlserver.jdbc.SQLServerDriver":"sqljdbc4.jar",
